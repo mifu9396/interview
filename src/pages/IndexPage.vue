@@ -195,6 +195,16 @@ const is_add_valid = computed(() => {
   }
   return valid
 })
+const is_edit_valid = computed(() => {
+  if (editVM.value) {
+    const { name, age } = editVM.value!
+    let valid = true
+    if (!name || !age?.toString()) {
+      valid = false
+    }
+    return valid
+  } else return false
+})
 function AddClick() {
   if (is_add_valid.value)
     axios
@@ -228,15 +238,16 @@ function editClick(vm: PersonViewModel) {
 }
 // 執行編輯
 function executeEdit() {
-  axios
-    .patch('https://demo.mercuryfire.com.tw:49110/crudTest', editVM.value)
-    .then((res) => {
-      console.log('edit person', res)
-      if (res.status === 200) {
-        editVM.value = undefined
-        getPeopleList()
-      }
-    })
+  if (is_edit_valid.value)
+    axios
+      .patch('https://demo.mercuryfire.com.tw:49110/crudTest', editVM.value)
+      .then((res) => {
+        console.log('edit person', res)
+        if (res.status === 200) {
+          editVM.value = undefined
+          getPeopleList()
+        }
+      })
 }
 function deleteClick(vm: PersonViewModel) {
   is_delete_confirm_ModalOpen.value = true
