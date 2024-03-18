@@ -1,24 +1,58 @@
 <template>
   <q-page class="row q-pt-xl">
     <div class="full-width q-px-xl">
-      <div class="q-mb-xl">
-        <q-input v-model="tempData.name" label="姓名" />
-        <q-input v-model="tempData.age" label="年齡" />
-        <q-btn color="primary" class="q-mt-md">新增</q-btn>
+      <div v-if="!editVM" class="q-mb-xl">
+        <q-input
+          v-model="addVM.name"
+          label="姓名"
+          :rules="[(val) => !!val || '不得空白']"
+        />
+        <q-input
+          type="number"
+          v-model.number="addVM.age"
+          label="年齡"
+          :rules="[
+            (val) =>
+              (val && Number.isInteger(val)) || '不得空白&限輸入數字(正整數)',
+          ]"
+        />
+        <q-btn color="primary" class="q-mt-md" @click="AddClick"> 新增</q-btn>
+      </div>
+      <div v-else class="q-mb-xl">
+        <q-input
+          v-model="editVM.name"
+          label="姓名"
+          :rules="[(val) => !!val || '不得空白']"
+        />
+        <q-input
+          type="number"
+          v-model.number="editVM.age"
+          label="年齡"
+          :rules="[
+            (val) =>
+              (val && Number.isInteger(val)) || '不得空白&限輸入數字(正整數)',
+          ]"
+        />
+        <q-btn color="primary" class="q-mt-md" @click="executeEdit">
+          更新
+        </q-btn>
+        <q-btn color="amber" class="q-mt-md" @click="cancelEditClick">
+          取消
+        </q-btn>
       </div>
 
       <q-table
         flat
         bordered
         ref="tableRef"
-        :rows="blockData"
+        :rows="people_list"
         :columns="(tableConfig as QTableProps['columns'])"
         row-key="id"
         hide-pagination
         separator="cell"
         :rows-per-page-options="[0]"
       >
-        <template v-slot:header="props">
+        <template #header="props">
           <q-tr :props="props">
             <q-th v-for="col in props.cols" :key="col.name" :props="props">
               {{ col.label }}
@@ -27,7 +61,7 @@
           </q-tr>
         </template>
 
-        <template v-slot:body="props">
+        <template #body="props">
           <q-tr :props="props">
             <q-td
               v-for="col in props.cols"
@@ -39,7 +73,7 @@
             </q-td>
             <q-td class="text-right" auto-width v-if="tableButtons.length > 0">
               <q-btn
-                @click="handleClickOption(btn, props.row)"
+                @click="actionClick(btn, props.row)"
                 v-for="(btn, index) in tableButtons"
                 :key="index"
                 size="sm"
@@ -74,24 +108,37 @@
         </template>
       </q-table>
     </div>
+
+    <q-dialog v-model="is_delete_confirm_ModalOpen" persistent>
+      <q-card style="width: 500px">
+        <q-card-section class="">
+          <h4>提示</h4>
+          <p class="q-ml-sm">是否確定刪除該筆資料?</p>
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn label="取消" v-close-popup />
+          <q-btn label="確定" v-close-popup @click="executeDelete" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
   </q-page>
 </template>
 
 <script setup lang="ts">
-import axios from 'axios';
-import { QTableProps } from 'quasar';
-import { ref } from 'vue';
+import axios from 'axios'
+import { QTableProps } from 'quasar'
+import { PersonViewModel } from 'src/models/PersonViewModel'
+import { computed, onMounted, ref } from 'vue'
+
 interface btnType {
-  label: string;
-  icon: string;
-  status: string;
+  label: string
+  icon: string
+  status: string
 }
-const blockData = ref([
-  {
-    name: 'test',
-    age: 25,
-  },
-]);
+
+const is_delete_confirm_ModalOpen = ref(false)
+const people_list = ref<PersonViewModel[]>([])
 const tableConfig = ref([
   {
     label: '姓名',
@@ -105,7 +152,7 @@ const tableConfig = ref([
     field: 'age',
     align: 'left',
   },
-]);
+])
 const tableButtons = ref([
   {
     label: '編輯',
@@ -117,14 +164,98 @@ const tableButtons = ref([
     icon: 'delete',
     status: 'delete',
   },
-]);
+])
 
-const tempData = ref({
-  name: '',
-  age: '',
-});
-function handleClickOption(btn, data) {
-  // ...
+const addVM = ref<PersonViewModel>(new PersonViewModel())
+const editVM = ref<PersonViewModel>()
+const deleteVM = ref<PersonViewModel>()
+
+onMounted(() => {
+  getPeopleList()
+})
+
+function getPeopleList() {
+  axios
+    .get<{ result: PersonViewModel[] }>(
+      'https://demo.mercuryfire.com.tw:49110/crudTest/a'
+    )
+    .then((res) => {
+      console.log('get people_list', res)
+      if (res.status === 200) {
+        people_list.value = res.data.result
+      }
+    })
+}
+
+const is_add_valid = computed(() => {
+  const { name, age } = addVM.value
+  let valid = true
+  if (!name || !age?.toString()) {
+    valid = false
+  }
+  return valid
+})
+function AddClick() {
+  if (is_add_valid.value)
+    axios
+      .post('https://demo.mercuryfire.com.tw:49110/crudTest', addVM.value)
+      .then((res) => {
+        console.log('add person', res)
+        if (res.status === 200) {
+          addVM.value = new PersonViewModel()
+          getPeopleList()
+        }
+      })
+}
+
+// row Click
+function actionClick(btn: btnType, vm: PersonViewModel) {
+  console.log('row click', btn, vm)
+  if (btn.status === 'delete') {
+    deleteClick(vm)
+  } else if (btn.status === 'edit') {
+    editClick(vm)
+  }
+}
+
+// 取消編輯
+function cancelEditClick() {
+  editVM.value = undefined
+}
+// 點選編輯
+function editClick(vm: PersonViewModel) {
+  editVM.value = { ...vm }
+}
+// 執行編輯
+function executeEdit() {
+  axios
+    .patch('https://demo.mercuryfire.com.tw:49110/crudTest', editVM.value)
+    .then((res) => {
+      console.log('edit person', res)
+      if (res.status === 200) {
+        editVM.value = undefined
+        getPeopleList()
+      }
+    })
+}
+function deleteClick(vm: PersonViewModel) {
+  is_delete_confirm_ModalOpen.value = true
+  deleteVM.value = vm
+}
+
+// 執行刪除
+function executeDelete() {
+  if (deleteVM.value)
+    axios
+      .delete(
+        `https://demo.mercuryfire.com.tw:49110/crudTest/${deleteVM.value.id}`
+      )
+      .then((res) => {
+        console.log('delete person', res)
+        if (res.status === 200) {
+          getPeopleList()
+        }
+      })
 }
 </script>
 
